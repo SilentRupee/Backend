@@ -57,16 +57,12 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         gstin
       }
     });
-
-    // Generate JWT token
     const token = generateToken({
       merchantId: merchant.id,
       email: merchant.email,
       username: merchant.username,
       type: merchant.type
     });
-
-    // Prepare response
     const response: AuthResponse = {
       token,
       merchant: {
