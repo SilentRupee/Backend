@@ -5,16 +5,12 @@ import { ValidationError, ErrorResponse } from './validation';
 export const validateRequest = (schema: ZodSchema) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
-      // Validate the request body against the schema
       const validatedData = schema.parse(req.body);
-      
-      // Replace req.body with validated and parsed data
       req.body = validatedData;
       
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-        // Format Zod validation errors
         const validationErrors: ValidationError[] = error.errors.map((err) => ({
           field: err.path.join('.'),
           message: err.message
@@ -28,8 +24,6 @@ export const validateRequest = (schema: ZodSchema) => {
         res.status(400).json(errorResponse);
         return;
       }
-
-      // Handle unexpected errors
       console.error('Validation middleware error:', error);
       res.status(500).json({ 
         error: 'Internal server error during validation' 
@@ -37,19 +31,13 @@ export const validateRequest = (schema: ZodSchema) => {
     }
   };
 };
-
-// Global error handler for async route handlers
 export const asyncHandler = (fn: Function) => {
   return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 };
-
-// Error handling middleware
 export const errorHandler = (error: Error, req: Request, res: Response, next: NextFunction): void => {
   console.error('Error:', error);
-
-  // Handle Zod validation errors
   if (error instanceof ZodError) {
     const validationErrors: ValidationError[] = error.errors.map((err) => ({
       field: err.path.join('.'),

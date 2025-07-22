@@ -16,7 +16,9 @@ model Merchant {
   pin                 Int 
   type                Shop_type
   walletAddress       String      @unique
+  Privatekey       String      @unique
   businessName        String
+    iv                  String
   shopAddress         String
   phoneNumber         String
   gstin               String?
@@ -33,6 +35,8 @@ model Customer {
   email               String      @unique
   username            String      @unique
   password            String
+     iv                  String
+   Privatekey       String      @unique
     pin                 Int 
   deviceId      String    @unique 
   walletAddress String    @unique 

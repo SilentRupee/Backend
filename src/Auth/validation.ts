@@ -11,14 +11,13 @@ export const loginSchema = z.object({
     .min(1, 'Password is required')
     .min(6, 'Password must be at least 6 characters long')
 });
-
-// Signup validation schema
 export const signupSchema = z.object({
   name: z
     .string()
     .min(1, 'Name is required')
     .min(2, 'Name must be at least 2 characters long')
     .max(50, 'Name must be less than 50 characters'),
+  code:z.string().min(6,"Otp has to be valid"),  
   email: z
     .string()
     .min(1, 'Email is required')
@@ -66,11 +65,10 @@ export const signupSchema = z.object({
     .or(z.literal(''))
 });
 
-// Type inference from schemas
 export type LoginRequest = z.infer<typeof loginSchema>;
 export type SignupRequest = z.infer<typeof signupSchema>;
 
-// Error response type
+
 export interface ValidationError {
   field: string;
   message: string;
