@@ -8,20 +8,20 @@ import bcrypt from "bcrypt";
 import crypto from "crypto"
 import  { Keypair } from "@solana/web3.js"
 import { generaotp } from './mailer';
+import { ProfileRequest, verify } from './validation';
 const prisma = new PrismaClient();
 export const signup = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
       email,
       username,
-      walletAddress,
+      password
     }: SignupRequest = req.body;
     const existingMerchant = await prisma.merchant.findFirst({
       where: {
         OR: [
           { email },
-          { username },
-          { walletAddress }
+          { username }
         ]
       }
     });
@@ -94,18 +94,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-export const verify=async(req:Request,res:Response)=>{
-  const { code, name, email, password ,username,
-    businessName,
-    shopAddress,
-    phoneNumber,
-    type,
-    walletAddress,
-    gstin
-  }: SignupRequest = req.body;
+export const Verify=async(req:Request,res:Response)=>{
+  const { code,email, password ,username,
+}: verify = req.body;
   console.log("Received OTP:", code);
   console.log("User data:", { name, email, password });
-  if (parseInt(code) === parseInt(req.app.locals.OTP)) {
+  if (code === parseInt(req.app.locals.OTP)) {
       req.app.locals.OTP = null;
       req.app.locals.resetSession = true;
       const keypair= Keypair.generate();
@@ -119,19 +113,19 @@ export const verify=async(req:Request,res:Response)=>{
     const hashedPassword = await hashPassword(password);
     const merchant = await prisma.merchant.create({
       data: {
-        name,
+        name:"",
         email,
         username,
         password: hashedPassword,
         pin: Math.floor(Math.random() * 9000) + 1000,
-        type: type as 'Restaurant' | 'General_Store',
-        walletAddress,
+        type:'General_Store',
+        walletAddress:keypair.publicKey.toBase58(),
         iv:iv.toString('hex'),
         Privatekey:encrypted,  
-        businessName,
-        shopAddress,
-        phoneNumber,
-        gstin
+        businessName:"",
+        shopAddress:"",
+        phoneNumber:"",
+        gstin:""
       }
     });
     const token = generateToken({
@@ -159,6 +153,37 @@ export const verify=async(req:Request,res:Response)=>{
   }
 }
 }
+export const Profile=async(req:Request,res:Response)=>{
+  const {  businessName,
+    name,
+    shopAddress,
+    phoneNumber,
+    gstin,username,
+    type
+} = req.body;
+
+
+  try{
+  
+    const merchant = await prisma.merchant.update({
+      where:{
+        username:username
+      },
+      data: {
+        name,
+        type:type as 'General_Store' | 'Restaurant',
+        businessName,
+        shopAddress,
+        phoneNumber,
+        gstin
+      }
+    });
+      return res.status(200).json({merchant});}
+  catch(e){
+      return res.status(400).json({message:e});
+  }
+}
+
 
 export const getProfile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
@@ -196,5 +221,86 @@ export const getProfile = async (req: AuthenticatedRequest, res: Response): Prom
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getProductCount = async (req: Request, res: Response) => {
+  try {
+    const { merchantId } = req.params;
+    const count = await prisma.product.count({ where: { merchantId } });
+    res.json({ merchantId, productCount: count });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch product count' });
+  }
+};
+
+// CREATE Product
+export const createProduct = async (req: Request, res: Response) => {
+  try {
+    const { merchantId, name, description, price, category, subcategory, stock, isAvailable, isVeg, brand, unit } = req.body;
+    const product = await prisma.product.create({
+      data: {
+        merchantId,
+        name,
+        description,
+        price,
+        category,
+        subcategory,
+        stock,
+        isAvailable,
+        isVeg,
+        brand,
+        unit,
+      },
+    });
+    res.status(201).json(product);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create product' });
+  }
+};
+
+// READ all Products for a Merchant
+export const getProductsByMerchant = async (req: Request, res: Response) => {
+  try {
+    const { merchantId } = req.params;
+    const products = await prisma.product.findMany({ where: { merchantId } });
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch products' });
+  }
+};
+
+// READ single Product by ID
+export const getProductById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    res.json(product);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch product' });
+  }
+};
+
+// UPDATE Product
+export const updateProduct = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const data = req.body;
+    const product = await prisma.product.update({ where: { id }, data });
+    res.json(product);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update product' });
+  }
+};
+
+// DELETE Product
+export const deleteProduct = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await prisma.product.delete({ where: { id } });
+    res.json({ message: 'Product deleted' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete product' });
   }
 }; 

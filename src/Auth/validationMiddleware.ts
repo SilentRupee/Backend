@@ -7,7 +7,6 @@ export const validateRequest = (schema: ZodSchema) => {
     try {
       const validatedData = schema.parse(req.body);
       req.body = validatedData;
-      
       next();
     } catch (error) {
       if (error instanceof ZodError) {

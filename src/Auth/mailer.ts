@@ -8,16 +8,7 @@ export const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS,
   },
 });
-
-export const sendWelcomeEmail = async (to: string, name: string) => {
-  await transporter.sendMail({
-    from: `Silent Rupee <${process.env.EMAIL_USER}>`,
-    to,
-    subject: 'Welcome to Silent Rupee!',
-    text: `Hello ${name},\n\nThank you for signing up with Silent Rupee! Your account has been created successfully.\n\nBest regards,\nSilent Rupee Team`,
-    // You can add an 'html' property for HTML emailsimport otp from "otp-generator"
-  });
-}; 
+ 
 export const  generaotp=async(req:any,res:any)=>{
     req.app.locals.OTP= otp.generate(6,{upperCaseAlphabets:false,specialChars:false,lowerCaseAlphabets:false,digits:true});
    console.log(req.app.locals.OTP)
@@ -27,7 +18,7 @@ console.log(email);
 const verifyotp={
         from: process.env.EMAIL_USERNAME,
         to: email,
-        subject: 'Solara App - Account Verification OTP',
+        subject: 'Silent Rupee - Account Verification OTP',
         html: `
           <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8fafc; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <div style="text-align: center; margin-bottom: 25px;">
