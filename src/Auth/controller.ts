@@ -29,10 +29,10 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ error: 'Merchant already exists with this email, username, or wallet address' });
       return;
     }
-    
+   const hashedPassword=await hashPassword(password);  
     await generaotp(req, res);
-
-    res.status(200).json({ message: "OTP sent. Please verify to complete registration." });  
+ 
+    res.status(200).json({ message: "OTP sent. Please verify to complete registration.",email,hashedPassword,username},);  
 
   } catch (error) {
     console.error('Signup error:', error);
@@ -95,11 +95,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   }
 };
 export const Verify=async(req:Request,res:Response)=>{
-  const { code,email, password ,username,
+  const { code,email,  hashedPassword ,username,
 }: verify = req.body;
-  console.log("Received OTP:", code);
-  console.log("User data:", { name, email, password });
-  if (code === parseInt(req.app.locals.OTP)) {
+
+  if (parseInt(code) === parseInt(req.app.locals.OTP)) {
       req.app.locals.OTP = null;
       req.app.locals.resetSession = true;
       const keypair= Keypair.generate();
@@ -110,7 +109,7 @@ export const Verify=async(req:Request,res:Response)=>{
   let encrypted = cipher.update(keypair.secretKey.toString(), 'utf8', 'hex');
   encrypted += cipher.final('hex')
   try{
-    const hashedPassword = await hashPassword(password);
+    
     const merchant = await prisma.merchant.create({
       data: {
         name:"",
@@ -161,8 +160,6 @@ export const Profile=async(req:Request,res:Response)=>{
     gstin,username,
     type
 } = req.body;
-
-
   try{
   
     const merchant = await prisma.merchant.update({

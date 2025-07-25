@@ -10,7 +10,7 @@ const router = Router();
 router.post('/login', validateRequest(loginSchema), asyncHandler(login));
 router.post('/signup', validateRequest(signupSchema), asyncHandler(signup));
 router.post('/verify', validateRequest(verifyotp), asyncHandler(Verify));
-router.post('/profile', asyncHandler(Profile));
+router.patch('/profile', asyncHandler(Profile));
 router.get('/profile', authenticateToken, asyncHandler(getProfile));
 router.get('/merchants/:merchantId/product-count', getProductCount);
 

@@ -60,7 +60,7 @@ password: z
 })
 export const verifyotp = z.object({
   code: z
-    .number()
+    .string()
     .min(6, 'OTP is required'),
     email: z
     .string()
@@ -72,12 +72,7 @@ export const verifyotp = z.object({
     .min(3, 'Username must be at least 3 characters long')
     .max(20, 'Username must be less than 20 characters')
     .regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
-  password: z
-    .string()
-    .min(1, 'Password is required')
-    .min(8, 'Password must be at least 8 characters long')
-    .max(100, 'Password must be less than 100 characters')
-    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Password must contain at least one lowercase letter, one uppercase letter, and one number'),
+    hashedPassword :z.string()
 
   
 });
