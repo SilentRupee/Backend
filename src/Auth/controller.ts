@@ -1,14 +1,19 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword, verifyPassword } from './password';
-import { generateToken } from './jwt';
-import { LoginRequest, SignupRequest, AuthResponse } from './types';
-import { AuthenticatedRequest } from './middleware';
+import { generateToken, generateCustomerToken } from './jwt';
+import { LoginRequest, SignupRequest, AuthResponse, CustomerAuthResponse, CustomerLoginRequest, CustomerSignupRequest, CustomerVerify, CustomerProfileRequest } from './types';
+import { AuthenticatedRequest, CustomerAuthenticatedRequest } from './middleware';
 import bcrypt from "bcrypt";
 import crypto from "crypto"
 import  { Keypair } from "@solana/web3.js"
 import { generaotp } from './mailer';
-import { ProfileRequest, verify } from './validation';
+import { ProductRequest, ProfileRequest, verify } from './validation';
+import * as anchor from "@coral-xyz/anchor";
+import { PublicKey } from "@solana/web3.js";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { TransactionLoyalityPrgram } from '../idl/transaction_loyality_prgram';
+
 const prisma = new PrismaClient();
 export const signup = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -43,25 +48,18 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password }: LoginRequest = req.body;
-   
     const merchant = await prisma.merchant.findUnique({
       where: { email }
     });
-
     if (!merchant) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
-
-
     const isPasswordValid = await verifyPassword(password, merchant.password);
-
     if (!isPasswordValid) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
-
-
     if (!merchant.isActive) {
       res.status(401).json({ error: 'Account is deactivated' });
       return;
@@ -103,13 +101,12 @@ export const Verify=async(req:Request,res:Response)=>{
       req.app.locals.resetSession = true;
       const keypair= Keypair.generate();
   const algorithm = 'aes-256-cbc';
-  const key = crypto.scryptSync(process.env.CRYPTO_SECRET || 'your-secret', 'salt', 32);
+  const key = crypto.scryptSync(process.env.CRYPTO_SECRET || 'your-secret', 'salt', 32); 
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(algorithm, key, iv);
-  let encrypted = cipher.update(keypair.secretKey.toString(), 'utf8', 'hex');
+  let encrypted = cipher.update(keypair.secretKey.toString(), 'utf8', 'hex'); 
   encrypted += cipher.final('hex')
   try{
-    
     const merchant = await prisma.merchant.create({
       data: {
         name:"",
@@ -231,10 +228,10 @@ export const getProductCount = async (req: Request, res: Response) => {
   }
 };
 
-// CREATE Product
+
 export const createProduct = async (req: Request, res: Response) => {
   try {
-    const { merchantId, name, description, price, category, subcategory, stock, isAvailable, isVeg, brand, unit } = req.body;
+    const { merchantId, name, description, price, category, subcategory, stock, isAvailable, isVeg, brand, unit }:ProductRequest = req.body;
     const product = await prisma.product.create({
       data: {
         merchantId,
@@ -299,5 +296,203 @@ export const deleteProduct = async (req: Request, res: Response) => {
     res.json({ message: 'Product deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete product' });
+  }
+}; 
+
+// Customer Authentication Functions
+export const customerSignup = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const {
+      email,
+      username,
+      password
+    }: CustomerSignupRequest = req.body;
+    
+    const existingCustomer = await prisma.customer.findFirst({
+      where: {
+        OR: [
+          { email },
+          { username }
+        ]
+      }
+    });
+    
+    if (existingCustomer) {
+      res.status(400).json({ error: 'Customer already exists with this email or username' });
+      return;
+    }
+    
+    const hashedPassword = await hashPassword(password);
+    await generaotp(req, res);
+ 
+    res.status(200).json({ 
+      message: "OTP sent. Please verify to complete registration.",
+      email,
+      hashedPassword,
+      username
+    });
+
+  } catch (error) {
+    console.error('Customer signup error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const customerLogin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, password }: CustomerLoginRequest = req.body;
+   
+    const customer = await prisma.customer.findUnique({
+      where: { email }
+    });
+
+    if (!customer) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+
+    const isPasswordValid = await verifyPassword(password, customer.password);
+
+    if (!isPasswordValid) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+
+    const token = generateCustomerToken({
+      customerId: customer.id,
+      email: customer.email,
+      username: customer.username
+    });
+    
+    const response: CustomerAuthResponse = {
+      token,
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        email: customer.email,
+        username: customer.username,
+        deviceId: customer.deviceId,
+        walletAddress: customer.walletAddress
+      }
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Customer login error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const customerVerify = async (req: Request, res: Response): Promise<void> => {
+  const { code, email, hashedPassword, username }: CustomerVerify = req.body;
+
+  if (parseInt(code) === parseInt(req.app.locals.OTP)) {
+    req.app.locals.OTP = null;
+    req.app.locals.resetSession = true;
+    
+    const keypair = Keypair.generate();
+    const algorithm = 'aes-256-cbc';
+    const key = crypto.scryptSync(process.env.CRYPTO_SECRET || 'your-secret', 'salt', 32);
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(algorithm, key, iv);
+    let encrypted = cipher.update(keypair.secretKey.toString(), 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    
+    try {
+      const customer = await prisma.customer.create({
+        data: {
+          name: "",
+          email,
+          username,
+          password: hashedPassword,
+          pin: Math.floor(Math.random() * 9000) + 1000,
+          deviceId: `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          walletAddress: keypair.publicKey.toBase58(),
+          iv: iv.toString('hex'),
+          Privatekey: encrypted
+        }
+      });
+
+   
+      
+      const token = generateCustomerToken({
+        customerId: customer.id,
+        email: customer.email,
+        username: customer.username
+      });
+      
+      const response: CustomerAuthResponse = {
+        token,
+        customer: {
+          id: customer.id,
+          name: customer.name,
+          email: customer.email,
+          username: customer.username,
+          deviceId: customer.deviceId,
+          walletAddress: customer.walletAddress
+        }
+      };
+      
+      res.status(200).json({ token, response });
+    } catch (e) {
+      res.status(400).json({ message: e });
+    }
+  } else {
+    res.status(400).json({ error: 'Invalid OTP' });
+  }
+};
+
+
+
+export const customerProfile = async (req: Request, res: Response): Promise<void> => {
+  const { name, username } = req.body;
+  
+  try {
+    const customer = await prisma.customer.update({
+      where: {
+        username: username
+      },
+      data: {
+        name
+      }
+    });
+    
+    res.status(200).json({ customer });
+  } catch (e) {
+    res.status(400).json({ message: e });
+  }
+};
+
+export const getCustomerProfile = async (req: CustomerAuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const customerId = req.customer?.customerId;
+
+    if (!customerId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        username: true,
+        deviceId: true,
+        walletAddress: true,
+        createdAt: true
+      }
+    });
+
+    if (!customer) {
+      res.status(404).json({ error: 'Customer not found' });
+      return;
+    }
+
+    res.json({ customer });
+  } catch (error) {
+    console.error('Get customer profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 }; 

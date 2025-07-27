@@ -1,8 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { authRoutes } from './Auth';
+import { authRoutes, customerRoutes } from './Auth';
 import { errorHandler } from './Auth/validationMiddleware';
+import { productRoute } from './Auth/routes/productroute';
 
 // Load environment variables
 dotenv.config();
@@ -16,6 +17,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/customer', customerRoutes);
+app.use("/api",productRoute)
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
@@ -37,6 +40,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🏥 Health check: http://localhost:${PORT}/health`);
   console.log(`🔐 Auth endpoints: http://localhost:${PORT}/api/auth`);
+  console.log(`👤 Customer endpoints: http://localhost:${PORT}/api/customer`);
 });
 
 export default app;
