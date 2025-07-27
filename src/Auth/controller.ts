@@ -13,8 +13,11 @@ import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { TransactionLoyalityPrgram } from '../idl/transaction_loyality_prgram';
+import { Program } from '@coral-xyz/anchor';
+
 
 const prisma = new PrismaClient();
+const program = anchor.workspace.transactionLoyalityPrgram as Program<TransactionLoyalityPrgram>;
 export const signup = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -123,7 +126,31 @@ export const Verify=async(req:Request,res:Response)=>{
         phoneNumber:"",
         gstin:""
       }
+      
     });
+    const [userVaultPda, userVaultBump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("user"), keypair.publicKey.toBuffer()],
+      program.programId
+    );
+          const mint = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+    const user_ata = await getAssociatedTokenAddress(mint, keypair.publicKey, false);
+    const vault_ata = await getAssociatedTokenAddress(mint, userVaultPda, true);
+  
+      const tx = await program.methods
+        .initialize()
+        .accountsStrict({
+          user: keypair.publicKey,
+          mint: mint,
+          userAta: user_ata,
+          vaultUser: userVaultPda,
+          vaultAta: vault_ata,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+          associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+        })
+        .signers([keypair])
+        .rpc();
+        console.log(tx);
     const token = generateToken({
       merchantId: merchant.id,
       email: merchant.email,
@@ -412,6 +439,29 @@ export const customerVerify = async (req: Request, res: Response): Promise<void>
           Privatekey: encrypted
         }
       });
+      const [userVaultPda, userVaultBump] = anchor.web3.PublicKey.findProgramAddressSync(
+        [Buffer.from("user"), keypair.publicKey.toBuffer()],
+        program.programId
+      );
+            const mint = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+      const user_ata = await getAssociatedTokenAddress(mint, keypair.publicKey, false);
+      const vault_ata = await getAssociatedTokenAddress(mint, userVaultPda, true);
+    
+        const tx = await program.methods
+          .initialize()
+          .accountsStrict({
+            user: keypair.publicKey,
+            mint: mint,
+            userAta: user_ata,
+            vaultUser: userVaultPda,
+            vaultAta: vault_ata,
+            systemProgram: anchor.web3.SystemProgram.programId,
+            tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+            associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+          })
+          .signers([keypair])
+          .rpc();
+          console.log(tx);
 
    
       
