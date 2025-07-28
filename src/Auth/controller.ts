@@ -6,18 +6,36 @@ import { LoginRequest, SignupRequest, AuthResponse, CustomerAuthResponse, Custom
 import { AuthenticatedRequest, CustomerAuthenticatedRequest } from './middleware';
 import bcrypt from "bcrypt";
 import crypto from "crypto"
-import  { Keypair } from "@solana/web3.js"
+import  { Connection, Keypair } from "@solana/web3.js"
 import { generaotp } from './mailer';
 import { ProductRequest, ProfileRequest, verify } from './validation';
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
-import { TransactionLoyalityPrgram } from '../idl/transaction_loyality_prgram';
+import { TransactionLoyalityPrgram } from "../idl/transaction_loyality_prgram"
 import { Program } from '@coral-xyz/anchor';
-
+import dotenv from 'dotenv';
+import idl from '../idl/transaction_loyality_prgram.json';
+import { bs58 } from '@coral-xyz/anchor/dist/cjs/utils/bytes';
+dotenv.config();
 
 const prisma = new PrismaClient();
-const program = anchor.workspace.transactionLoyalityPrgram as Program<TransactionLoyalityPrgram>;
+if(!process.env.RPC_URL){
+  throw new Error("ERROR: PROGRAM_ID environment variable not set. Please check your .env file.");
+
+}
+const RPC_URL = process.env.RPC_URL!;
+const secret =  bs58.decode("3xRxq7tnww8wmfR95Zyt7JjQGdRnFMRiXJycfJrLaCreDhxBPUFMESDKPR5SvBBbq9KR2n7eu1xTwF5tziSiw4LJ") // Assuming the secret is the array from the JSON file
+const serverKeypair = Keypair.fromSecretKey(secret);
+const connection = new Connection(RPC_URL, "confirmed");
+const wallet = new anchor.Wallet(serverKeypair);
+const provider = new anchor.AnchorProvider(connection, wallet, {
+    commitment: "confirmed",
+})
+const program = new Program<TransactionLoyalityPrgram>(
+  idl as TransactionLoyalityPrgram, 
+  provider
+);
 export const signup = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -110,46 +128,63 @@ export const Verify=async(req:Request,res:Response)=>{
   let encrypted = cipher.update(keypair.secretKey.toString(), 'utf8', 'hex'); 
   encrypted += cipher.final('hex')
   try{
-    const merchant = await prisma.merchant.create({
-      data: {
-        name:"",
-        email,
-        username,
-        password: hashedPassword,
-        pin: Math.floor(Math.random() * 9000) + 1000,
-        type:'General_Store',
-        walletAddress:keypair.publicKey.toBase58(),
-        iv:iv.toString('hex'),
-        Privatekey:encrypted,  
-        businessName:"",
-        shopAddress:"",
-        phoneNumber:"",
-        gstin:""
-      }
-      
-    });
     const [userVaultPda, userVaultBump] = anchor.web3.PublicKey.findProgramAddressSync(
       [Buffer.from("user"), keypair.publicKey.toBuffer()],
       program.programId
     );
-          const mint = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+    const mint = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
     const user_ata = await getAssociatedTokenAddress(mint, keypair.publicKey, false);
     const vault_ata = await getAssociatedTokenAddress(mint, userVaultPda, true);
-  
-      const tx = await program.methods
-        .initialize()
-        .accountsStrict({
-          user: keypair.publicKey,
-          mint: mint,
-          userAta: user_ata,
-          vaultUser: userVaultPda,
-          vaultAta: vault_ata,
-          systemProgram: anchor.web3.SystemProgram.programId,
-          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
-          associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
-        })
-        .signers([keypair])
-        .rpc();
+    const accountsToInitialize = {
+      user: keypair.publicKey,
+      mint: mint,
+      userAta: user_ata,
+      owner: wallet.payer.publicKey,
+      vaultUser: userVaultPda,
+      vaultAta: vault_ata,
+      systemProgram: anchor.web3.SystemProgram.programId,
+      tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+      associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+  };
+     
+        console.log("--- DEBUG: ACCOUNTS BEING SENT ---");
+console.log("User:", accountsToInitialize.user.toBase58());
+console.log("Mint:", accountsToInitialize.mint.toBase58()); // <-- THIS IS THE IMPORTANT ONE
+console.log("Owner:", accountsToInitialize.owner.toBase58());
+const tx = await program.methods
+.initialize()
+.accountsStrict({
+  user: keypair.publicKey,
+  mint: mint,
+  userAta: user_ata,
+  owner:wallet.payer.publicKey,
+  vaultUser: userVaultPda,
+  vaultAta: vault_ata,
+  systemProgram: anchor.web3.SystemProgram.programId,
+  tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+  associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+})
+.signers([keypair,wallet.payer])
+.rpc();
+        const merchant = await prisma.merchant.create({
+          data: {
+            name:"",
+            email,
+            username,
+            password: hashedPassword,
+            pin: Math.floor(Math.random() * 9000) + 1000,
+            type:'General_Store',
+            walletAddress:keypair.publicKey.toBase58(),
+            iv:iv.toString('hex'),
+            Privatekey:encrypted,  
+            pda: vault_ata.toString(),
+            businessName:"",
+            shopAddress:"",
+            phoneNumber:"",
+            gstin:""
+          }
+          
+        });
         console.log(tx);
     const token = generateToken({
       merchantId: merchant.id,
@@ -426,19 +461,6 @@ export const customerVerify = async (req: Request, res: Response): Promise<void>
     encrypted += cipher.final('hex');
     
     try {
-      const customer = await prisma.customer.create({
-        data: {
-          name: "",
-          email,
-          username,
-          password: hashedPassword,
-          pin: Math.floor(Math.random() * 9000) + 1000,
-          deviceId: `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          walletAddress: keypair.publicKey.toBase58(),
-          iv: iv.toString('hex'),
-          Privatekey: encrypted
-        }
-      });
       const [userVaultPda, userVaultBump] = anchor.web3.PublicKey.findProgramAddressSync(
         [Buffer.from("user"), keypair.publicKey.toBuffer()],
         program.programId
@@ -446,6 +468,21 @@ export const customerVerify = async (req: Request, res: Response): Promise<void>
             const mint = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
       const user_ata = await getAssociatedTokenAddress(mint, keypair.publicKey, false);
       const vault_ata = await getAssociatedTokenAddress(mint, userVaultPda, true);
+      const customer = await prisma.customer.create({
+        data: {
+          name: "",
+          email,
+          username,
+          password: hashedPassword,
+          pda:vault_ata.toString(),
+          pin: Math.floor(Math.random() * 9000) + 1000,
+          deviceId: `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          walletAddress: keypair.publicKey.toBase58(),
+          iv: iv.toString('hex'),
+          Privatekey: encrypted
+        }
+      });
+    
     
         const tx = await program.methods
           .initialize()
@@ -454,6 +491,7 @@ export const customerVerify = async (req: Request, res: Response): Promise<void>
             mint: mint,
             userAta: user_ata,
             vaultUser: userVaultPda,
+            owner:wallet.payer.publicKey,
             vaultAta: vault_ata,
             systemProgram: anchor.web3.SystemProgram.programId,
             tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,

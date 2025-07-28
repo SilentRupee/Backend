@@ -1,13 +1,7 @@
-/**
- * Program IDL in camelCase format in order to be used in JS/TS.
- *
- * Note that this is only a type helper and is not the actual IDL. The original
- * IDL can be found at `target/idl/transaction_loyality_prgram.json`.
- */
-export type TransactionLoyalityPrgram = {
+{
   "address": "3UsXKPLCiehQ2WR6yExkKVnLBCy2t6Z3W9yrCqFFc1wY",
   "metadata": {
-    "name": "transactionLoyalityPrgram",
+    "name": "transaction_loyality_prgram",
     "version": "0.1.0",
     "spec": "0.1.0",
     "description": "Created with Anchor"
@@ -35,7 +29,7 @@ export type TransactionLoyalityPrgram = {
           "name": "mint"
         },
         {
-          "name": "vaultUser",
+          "name": "vault_user",
           "writable": true,
           "pda": {
             "seeds": [
@@ -56,13 +50,13 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultAta",
+          "name": "vault_ata",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "account",
-                "path": "vaultUser"
+                "path": "vault_user"
               },
               {
                 "kind": "const",
@@ -146,15 +140,15 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "systemProgram",
+          "name": "system_program",
           "address": "11111111111111111111111111111111"
         },
         {
-          "name": "tokenProgram",
+          "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "associatedTokenProgram",
+          "name": "associated_token_program",
           "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         }
       ],
@@ -182,7 +176,7 @@ export type TransactionLoyalityPrgram = {
           "name": "mint"
         },
         {
-          "name": "userAta",
+          "name": "user_ata",
           "writable": true,
           "pda": {
             "seeds": [
@@ -272,7 +266,7 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultUser",
+          "name": "vault_user",
           "writable": true,
           "pda": {
             "seeds": [
@@ -293,13 +287,13 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultAta",
+          "name": "vault_ata",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "account",
-                "path": "vaultUser"
+                "path": "vault_user"
               },
               {
                 "kind": "const",
@@ -383,15 +377,15 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "systemProgram",
+          "name": "system_program",
           "address": "11111111111111111111111111111111"
         },
         {
-          "name": "tokenProgram",
+          "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "associatedTokenProgram",
+          "name": "associated_token_program",
           "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         }
       ],
@@ -429,7 +423,7 @@ export type TransactionLoyalityPrgram = {
           "name": "mint"
         },
         {
-          "name": "userAta",
+          "name": "user_ata",
           "writable": true,
           "pda": {
             "seeds": [
@@ -519,7 +513,7 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultUser",
+          "name": "vault_user",
           "writable": true,
           "pda": {
             "seeds": [
@@ -540,13 +534,13 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultAta",
+          "name": "vault_ata",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "account",
-                "path": "vaultUser"
+                "path": "vault_user"
               },
               {
                 "kind": "const",
@@ -630,15 +624,15 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "systemProgram",
+          "name": "system_program",
           "address": "11111111111111111111111111111111"
         },
         {
-          "name": "tokenProgram",
+          "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "associatedTokenProgram",
+          "name": "associated_token_program",
           "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         }
       ],
@@ -670,7 +664,7 @@ export type TransactionLoyalityPrgram = {
           "name": "mint"
         },
         {
-          "name": "userAta",
+          "name": "user_ata",
           "writable": true,
           "pda": {
             "seeds": [
@@ -760,7 +754,7 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultUser",
+          "name": "vault_user",
           "writable": true,
           "pda": {
             "seeds": [
@@ -781,13 +775,13 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultAta",
+          "name": "vault_ata",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "account",
-                "path": "vaultUser"
+                "path": "vault_user"
               },
               {
                 "kind": "const",
@@ -871,7 +865,7 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultSecond",
+          "name": "vault_second",
           "writable": true,
           "pda": {
             "seeds": [
@@ -892,13 +886,13 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultSecondAta",
+          "name": "vault_second_ata",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "account",
-                "path": "vaultSecond"
+                "path": "vault_second"
               },
               {
                 "kind": "const",
@@ -982,15 +976,15 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "systemProgram",
+          "name": "system_program",
           "address": "11111111111111111111111111111111"
         },
         {
-          "name": "tokenProgram",
+          "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "associatedTokenProgram",
+          "name": "associated_token_program",
           "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         }
       ],
@@ -1023,7 +1017,7 @@ export type TransactionLoyalityPrgram = {
           "name": "mint"
         },
         {
-          "name": "userAta",
+          "name": "user_ata",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1113,7 +1107,7 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultUser",
+          "name": "vault_user",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1134,13 +1128,13 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "vaultAta",
+          "name": "vault_ata",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "account",
-                "path": "vaultUser"
+                "path": "vault_user"
               },
               {
                 "kind": "const",
@@ -1224,15 +1218,15 @@ export type TransactionLoyalityPrgram = {
           }
         },
         {
-          "name": "systemProgram",
+          "name": "system_program",
           "address": "11111111111111111111111111111111"
         },
         {
-          "name": "tokenProgram",
+          "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "associatedTokenProgram",
+          "name": "associated_token_program",
           "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         }
       ],
@@ -1246,7 +1240,7 @@ export type TransactionLoyalityPrgram = {
   ],
   "accounts": [
     {
-      "name": "userVault",
+      "name": "UserVault",
       "discriminator": [
         23,
         76,
@@ -1261,7 +1255,7 @@ export type TransactionLoyalityPrgram = {
   ],
   "types": [
     {
-      "name": "userVault",
+      "name": "UserVault",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1277,4 +1271,4 @@ export type TransactionLoyalityPrgram = {
       }
     }
   ]
-};
+}

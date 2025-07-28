@@ -24,4 +24,4 @@ router.post('/verify', validateRequest(customerVerifyOtpSchema), asyncHandler(cu
 router.patch('/profile', validateRequest(customerProfileSchema), asyncHandler(customerProfile));
 router.get('/profile', authenticateCustomerToken, asyncHandler(getCustomerProfile));
 
-export default router; 
+export default router;

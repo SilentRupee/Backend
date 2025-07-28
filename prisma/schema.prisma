@@ -19,6 +19,7 @@ model Merchant {
   Privatekey       String      @unique
   businessName        String
     iv                  String
+       pda               String 
   shopAddress         String
   phoneNumber         String
   gstin               String?
@@ -38,6 +39,7 @@ model Customer {
      iv                  String
    Privatekey       String      @unique
     pin                 Int 
+    pda               String 
   deviceId      String    @unique 
   walletAddress String    @unique 
   createdAt     DateTime  @default(now())
