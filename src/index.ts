@@ -1,9 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { authRoutes, customerRoutes } from './Auth';
-import { errorHandler } from './Auth/validationMiddleware';
-import { productRoute } from './Auth/routes/productroute';
+import { authRoutes } from './modules/auth';
+import customerRoutes from './modules/customer/routes/customerRoutes';
+import { errorHandler } from './modules/shared/validation/validationMiddleware';
+import { productRoute } from './modules/product/routes/productRoutes';
 
 // Load environment variables
 dotenv.config();
