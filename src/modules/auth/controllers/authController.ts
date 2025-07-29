@@ -124,8 +124,8 @@ export const Verify=async(req:Request,res:Response)=>{
   const key = crypto.scryptSync(process.env.CRYPTO_SECRET || 'your-secret', 'salt', 32); 
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(algorithm, key, iv);
-  let encrypted = cipher.update(keypair.secretKey.toString(), 'utf8', 'hex'); 
-  encrypted += cipher.final('hex')
+  let encrypted = cipher.update(bs58.encode(keypair.secretKey), 'utf8', 'hex'); 
+  encrypted += cipher.final('hex');
   try{
     const [userVaultPda, userVaultBump] = anchor.web3.PublicKey.findProgramAddressSync(
       [Buffer.from("user"), keypair.publicKey.toBuffer()],
@@ -360,226 +360,240 @@ export const deleteProduct = async (req: Request, res: Response) => {
   }
 }; 
 
-// Customer Authentication Functions
-export const customerSignup = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const {
-      email,
-      username,
-      password
-    }: CustomerSignupRequest = req.body;
+// // Customer Authentication Functions
+// export const customerSignup = async (req: Request, res: Response): Promise<void> => {
+//   try {
+//     const {
+//       email,
+//       username,
+//       password
+//     }: CustomerSignupRequest = req.body;
     
-    const existingCustomer = await prisma.customer.findFirst({
-      where: {
-        OR: [
-          { email },
-          { username }
-        ]
-      }
-    });
+//     const existingCustomer = await prisma.customer.findFirst({
+//       where: {
+//         OR: [
+//           { email },
+//           { username }
+//         ]
+//       }
+//     });
     
-    if (existingCustomer) {
-      res.status(400).json({ error: 'Customer already exists with this email or username' });
-      return;
-    }
+//     if (existingCustomer) {
+//       res.status(400).json({ error: 'Customer already exists with this email or username' });
+//       return;
+//     }
     
-    const hashedPassword = await hashPassword(password);
-    await generaotp(req, res);
+//     const hashedPassword = await hashPassword(password);
+//     await generaotp(req, res);
  
-    res.status(200).json({ 
-      message: "OTP sent. Please verify to complete registration.",
-      email,
-      hashedPassword,
-      username
-    });
+//     res.status(200).json({ 
+//       message: "OTP sent. Please verify to complete registration.",
+//       email,
+//       hashedPassword,
+//       username
+//     });
 
-  } catch (error) {
-    console.error('Customer signup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
+//   } catch (error) {
+//     console.error('Customer signup error:', error);
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// };
 
-export const customerLogin = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { email, password }: CustomerLoginRequest = req.body;
+// export const customerLogin = async (req: Request, res: Response): Promise<void> => {
+//   try {
+//     const { email, password }: CustomerLoginRequest = req.body;
    
-    const customer = await prisma.customer.findUnique({
-      where: { email }
-    });
+//     const customer = await prisma.customer.findUnique({
+//       where: { email }
+//     });
 
-    if (!customer) {
-      res.status(401).json({ error: 'Invalid credentials' });
-      return;
-    }
+//     if (!customer) {
+//       res.status(401).json({ error: 'Invalid credentials' });
+//       return;
+//     }
 
-    const isPasswordValid = await verifyPassword(password, customer.password);
+//     const isPasswordValid = await verifyPassword(password, customer.password);
 
-    if (!isPasswordValid) {
-      res.status(401).json({ error: 'Invalid credentials' });
-      return;
-    }
+//     if (!isPasswordValid) {
+//       res.status(401).json({ error: 'Invalid credentials' });
+//       return;
+//     }
 
-    const token = generateCustomerToken({
-      customerId: customer.id,
-      email: customer.email,
-      username: customer.username
-    });
+//     const token = generateCustomerToken({
+//       customerId: customer.id,
+//       email: customer.email,
+//       username: customer.username
+//     });
     
-    const response: CustomerAuthResponse = {
-      token,
-      customer: {
-        id: customer.id,
-        name: customer.name,
-        email: customer.email,
-        username: customer.username,
-        deviceId: customer.deviceId,
-        walletAddress: customer.walletAddress
-      }
-    };
+//     const response: CustomerAuthResponse = {
+//       token,
+//       customer: {
+//         id: customer.id,
+//         name: customer.name,
+//         email: customer.email,
+//         username: customer.username,
+//         deviceId: customer.deviceId,
+//         walletAddress: customer.walletAddress
+//       }
+//     };
 
-    res.json(response);
-  } catch (error) {
-    console.error('Customer login error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
+//     res.json(response);
+//   } catch (error) {
+//     console.error('Customer login error:', error);
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// };
 
-export const customerVerify = async (req: Request, res: Response): Promise<void> => {
-  const { code, email, hashedPassword, username }: CustomerVerify = req.body;
+// export const customerVerify = async (req: Request, res: Response): Promise<void> => {
+//   const { code, email, hashedPassword, username }: CustomerVerify = req.body;
 
-  if (parseInt(code) === parseInt(req.app.locals.OTP)) {
-    req.app.locals.OTP = null;
-    req.app.locals.resetSession = true;
+//   if (parseInt(code) === parseInt(req.app.locals.OTP)) {
+//     req.app.locals.OTP = null;
+//     req.app.locals.resetSession = true;
+//     console.log("dasdas");
+//     const keypair = Keypair.generate();
+//     const algorithm = 'aes-256-cbc';
+//     const key = crypto.scryptSync('your-secret', 'salt', 32);
+//     const iv = crypto.randomBytes(16);
+//     const cipher = crypto.createCipheriv(algorithm, key, iv);
+//     let encrypted = cipher.update(bs58.encode(keypair.secretKey), 'utf8', 'hex'); 
+//   encrypted += cipher.final('hex');
+//   const first=keypair.secretKey.toString()
+//     console.log("first",first);
+//   const merchantIv = Buffer.from(iv.toString(), 'hex');
+//   const merchantCipher = crypto.createDecipheriv(algorithm, key, merchantIv);
+//   let merchantDecrypted = merchantCipher.update(keypair.secretKey.toString(), 'hex', 'utf8');
+//   merchantDecrypted += merchantCipher.final('utf8');
+//   const merchantKeypair = Keypair.fromSecretKey(bs58.decode(merchantDecrypted));
+//   const second=merchantKeypair.secretKey.toString()
+//   console.log("second",second);
+//   if(first==second){
+//     console.log("true");
+//   }else{
+//     console.log("false");
+//   }
+
+//     try {
+//       const [userVaultPda, userVaultBump] = anchor.web3.PublicKey.findProgramAddressSync(
+//         [Buffer.from("user"), keypair.publicKey.toBuffer()],
+//         program.programId
+//       );
+//             const mint = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+//       const user_ata = await getAssociatedTokenAddress(mint, keypair.publicKey, false);
+//       const vault_ata = await getAssociatedTokenAddress(mint, userVaultPda, true);
+//       const customer = await prisma.customer.create({
+//         data: {
+//           name: "",
+//           email,
+//           username,
+//           password: hashedPassword,
+//           pda:vault_ata.toString(),
+//           pin: Math.floor(Math.random() * 9000) + 1000,
+//           deviceId: `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+//           walletAddress: keypair.publicKey.toBase58(),
+//           iv: iv.toString('hex'),
+//           Privatekey: encrypted
+//         }
+//       });
     
-    const keypair = Keypair.generate();
-    const algorithm = 'aes-256-cbc';
-    const key = crypto.scryptSync(process.env.CRYPTO_SECRET || 'your-secret', 'salt', 32);
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(algorithm, key, iv);
-    let encrypted = cipher.update(keypair.secretKey.toString(), 'utf8', 'hex');
-    encrypted += cipher.final('hex');
     
-    try {
-      const [userVaultPda, userVaultBump] = anchor.web3.PublicKey.findProgramAddressSync(
-        [Buffer.from("user"), keypair.publicKey.toBuffer()],
-        program.programId
-      );
-            const mint = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
-      const user_ata = await getAssociatedTokenAddress(mint, keypair.publicKey, false);
-      const vault_ata = await getAssociatedTokenAddress(mint, userVaultPda, true);
-      const customer = await prisma.customer.create({
-        data: {
-          name: "",
-          email,
-          username,
-          password: hashedPassword,
-          pda:vault_ata.toString(),
-          pin: Math.floor(Math.random() * 9000) + 1000,
-          deviceId: `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          walletAddress: keypair.publicKey.toBase58(),
-          iv: iv.toString('hex'),
-          Privatekey: encrypted
-        }
-      });
-    
-    
-        const tx = await program.methods
-          .initialize()
-          .accountsStrict({
-            user: keypair.publicKey,
-            mint: mint,
-            userAta: user_ata,
-            vaultUser: userVaultPda,
-            owner:wallet.payer.publicKey,
-            vaultAta: vault_ata,
-            systemProgram: anchor.web3.SystemProgram.programId,
-            tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
-            associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
-          })
-          .signers([keypair])
-          .rpc();
-          console.log(tx);
+//         const tx = await program.methods
+//           .initialize()
+//           .accountsStrict({
+//             user: keypair.publicKey,
+//             mint: mint,
+//             userAta: user_ata,
+//             vaultUser: userVaultPda,
+//             owner:wallet.payer.publicKey,
+//             vaultAta: vault_ata,
+//             systemProgram: anchor.web3.SystemProgram.programId,
+//             tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+//             associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+//           })
+//           .signers([keypair])
+//           .rpc();
+//           console.log(tx);
 
    
       
-      const token = generateCustomerToken({
-        customerId: customer.id,
-        email: customer.email,
-        username: customer.username
-      });
+//       const token = generateCustomerToken({
+//         customerId: customer.id,
+//         email: customer.email,
+//         username: customer.username
+//       });
       
-      const response: CustomerAuthResponse = {
-        token,
-        customer: {
-          id: customer.id,
-          name: customer.name,
-          email: customer.email,
-          username: customer.username,
-          deviceId: customer.deviceId,
-          walletAddress: customer.walletAddress
-        }
-      };
+//       const response: CustomerAuthResponse = {
+//         token,
+//         customer: {
+//           id: customer.id,
+//           name: customer.name,
+//           email: customer.email,
+//           username: customer.username,
+//           deviceId: customer.deviceId,
+//           walletAddress: customer.walletAddress
+//         }
+//       };
       
-      res.status(200).json({ token, response });
-    } catch (e) {
-      res.status(400).json({ message: e });
-    }
-  } else {
-    res.status(400).json({ error: 'Invalid OTP' });
-  }
-};
+//       res.status(200).json({ token, response });
+//     } catch (e) {
+//       res.status(400).json({ message: e });
+//     }
+//   } else {
+//     res.status(400).json({ error: 'Invalid OTP' });
+//   }
+// };
 
 
 
-export const customerProfile = async (req: Request, res: Response): Promise<void> => {
-  const { name, username } = req.body;
+// export const customerProfile = async (req: Request, res: Response): Promise<void> => {
+//   const { name, username } = req.body;
   
-  try {
-    const customer = await prisma.customer.update({
-      where: {
-        username: username
-      },
-      data: {
-        name
-      }
-    });
+//   try {
+//     const customer = await prisma.customer.update({
+//       where: {
+//         username: username
+//       },
+//       data: {
+//         name
+//       }
+//     });
     
-    res.status(200).json({ customer });
-  } catch (e) {
-    res.status(400).json({ message: e });
-  }
-};
+//     res.status(200).json({ customer });
+//   } catch (e) {
+//     res.status(400).json({ message: e });
+//   }
+// };
 
-export const getCustomerProfile = async (req: CustomerAuthenticatedRequest, res: Response): Promise<void> => {
-  try {
-    const customerId = req.customer?.customerId;
+// export const getCustomerProfile = async (req: CustomerAuthenticatedRequest, res: Response): Promise<void> => {
+//   try {
+//     const customerId = req.customer?.customerId;
 
-    if (!customerId) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
+//     if (!customerId) {
+//       res.status(401).json({ error: 'Unauthorized' });
+//       return;
+//     }
 
-    const customer = await prisma.customer.findUnique({
-      where: { id: customerId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        username: true,
-        deviceId: true,
-        walletAddress: true,
-        createdAt: true
-      }
-    });
+//     const customer = await prisma.customer.findUnique({
+//       where: { id: customerId },
+//       select: {
+//         id: true,
+//         name: true,
+//         email: true,
+//         username: true,
+//         deviceId: true,
+//         walletAddress: true,
+//         createdAt: true
+//       }
+//     });
 
-    if (!customer) {
-      res.status(404).json({ error: 'Customer not found' });
-      return;
-    }
+//     if (!customer) {
+//       res.status(404).json({ error: 'Customer not found' });
+//       return;
+//     }
 
-    res.json({ customer });
-  } catch (error) {
-    console.error('Get customer profile error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-}; 
+//     res.json({ customer });
+//   } catch (error) {
+//     console.error('Get customer profile error:', error);
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// }; 

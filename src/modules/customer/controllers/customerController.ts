@@ -440,12 +440,34 @@ export const customerVerify = async (req: Request, res: Response): Promise<void>
     
     const keypair = Keypair.generate();
     const algorithm = 'aes-256-cbc';
-    const key = crypto.scryptSync(process.env.CRYPTO_SECRET || 'your-secret', 'salt', 32);
+    const key = crypto.scryptSync('your-secret', 'salt', 32);
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv(algorithm, key, iv);
-    let encrypted = cipher.update(keypair.secretKey.toString(), 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    
+    const encryptedBuffer = Buffer.concat([
+      cipher.update(keypair.secretKey), // Pass the buffer
+      cipher.final(),
+  ]);
+  const encrypted = encryptedBuffer.toString('hex');;
+  const first = bs58.encode(keypair.secretKey);
+  console.log("Original (bs58):", first);
+  const ivFromHex = iv.toString('hex');
+  const customerIv = Buffer.from(ivFromHex, 'hex');
+  const customerCipher = crypto.createDecipheriv(algorithm, key, customerIv);
+const decryptedBuffer = Buffer.concat([
+    customerCipher.update(encrypted, 'hex'), // Specify input format
+    customerCipher.final(),
+])
+const customerKeypair = Keypair.fromSecretKey(decryptedBuffer);
+
+// Encode the reconstructed key in the same format (bs58) for comparison
+const second = bs58.encode(customerKeypair.secretKey);
+
+    console.log("seconde",second);
+    if(first==second){
+      console.log(true);
+    }else{
+      console.log(false);
+    }
     try {
       const [userVaultPda, userVaultBump] = anchor.web3.PublicKey.findProgramAddressSync(
         [Buffer.from("user"), keypair.publicKey.toBuffer()],

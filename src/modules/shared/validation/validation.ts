@@ -74,22 +74,16 @@ password: z
 
 // Customer profile schema
 export const customerProfileSchema = z.object({
-  name: z
-    .string()
-    .min(1, 'Name is required')
-    .min(2, 'Name must be at least 2 characters long')
-    .max(50, 'Name must be less than 50 characters'),
-  email: z
-    .string()
-    .min(1, 'Email is required')
-    .email('Invalid email format'),
-  username: z
-    .string()
-    .min(1, 'Username is required')
-    .min(3, 'Username must be at least 3 characters long')
-    .max(20, 'Username must be less than 20 characters')
-    .regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
+  name: z.string().min(1, 'Name is required'),
+  username: z.string().min(1, 'Username is required')
 });
+
+export const purchaseSchema = z.object({
+  productId: z.string().min(1, 'Product ID is required'),
+  quantity: z.number().positive('Quantity must be positive')
+});
+
+export type PurchaseRequest = z.infer<typeof purchaseSchema>;
 
 export const verifyotp = z.object({
   code: z
