@@ -21,6 +21,7 @@ model Merchant {
     iv                  String
        pda               String 
   shopAddress         String
+  vaultuser            String
   phoneNumber         String
   gstin               String?
   isActive            Boolean     @default(true)
@@ -40,6 +41,7 @@ model Customer {
    Privatekey       String      @unique
     pin                 Int 
     pda               String 
+      vaultuser            String
   deviceId      String    @unique 
   walletAddress String    @unique 
   createdAt     DateTime  @default(now())
