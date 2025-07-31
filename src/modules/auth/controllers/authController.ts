@@ -85,13 +85,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       res.status(401).json({ error: 'Account is deactivated' });
       return;
     }
-
- 
-    const token = generateToken({
+       const token = generateToken({
       merchantId: merchant.id,
       email: merchant.email,
       username: merchant.username,
-      type: merchant.type
+      type: merchant.type,
+      role:"Merchant"
     });
     const response: AuthResponse = {
       token,
@@ -127,7 +126,7 @@ const algorithm = 'aes-256-cbc';
 const key = crypto.scryptSync(process.env.CRYPTO_SECRET || 'your-secret', 'salt', 32);
 const iv = crypto.randomBytes(16);
 const cipher = crypto.createCipheriv(algorithm, key, iv);
-let encrypted = cipher.update(keypair.secretKey.toString(), 'utf8', 'hex');
+let encrypted = cipher.update(bs58.encode(keypair.secretKey), 'utf8', 'hex');
 encrypted += cipher.final('hex');
   try{
     const [userVaultPda, userVaultBump] = anchor.web3.PublicKey.findProgramAddressSync(
@@ -193,7 +192,8 @@ const tx = await program.methods
       merchantId: merchant.id,
       email: merchant.email,
       username: merchant.username,
-      type: merchant.type
+      type: merchant.type,
+      role:"Merchant"
     });
     const response: AuthResponse = {
       token,

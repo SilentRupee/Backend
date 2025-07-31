@@ -16,7 +16,11 @@ const PORT = process.env.PORT || 3003;
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
+app.get("/check", (req: express.Request, res: express.Response) => {
+  console.log("dasd");
+  const che = "dasda";
+   res.json("asdasd");
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/customer', customerRoutes);
 app.use("/api",productRoute)

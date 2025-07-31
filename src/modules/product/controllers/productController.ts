@@ -16,6 +16,7 @@ import { Program } from '@coral-xyz/anchor';
 import dotenv from 'dotenv';
 import idl from '../../../idl/transaction_loyality_prgram.json';
 import { bs58 } from '@coral-xyz/anchor/dist/cjs/utils/bytes';
+import QRCode from 'qrcode';
 dotenv.config();
 
 const prisma = new PrismaClient();
@@ -69,8 +70,6 @@ export const createProduct = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to create product' });
   }
 };
-
-// READ all Products for a Merchant
 export const getProductsByMerchant = async (req: Request, res: Response) => {
   try {
     const { merchantId } = req.params;
@@ -114,260 +113,188 @@ export const deleteProduct = async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete product' });
   }
-}; 
+}; async function getUsdcToInrRate(): Promise<number> {
+  try {
+    // In a real app, you would fetch from an API like CoinGecko, CoinMarketCap, etc.
+    // Example:
+    // const response = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=inr');
+    // return response.data['usd-coin'].inr;
+    
+    // Using a static rate for this example.
+    console.log("Using static exchange rate for USDC to INR.");
+    return 83.60; // Example: 1 USDC = ₹83.60 INR
+  } catch (error) {
+    console.error("Failed to fetch exchange rate, using default.", error);
+    return 83.60; // Return a fallback rate on error
+  }
+}
 
-// Get Wallet Transaction History
+
+function getBalanceChanges(tx: any): Map<string, number> {
+  const changes = new Map<string, number>();
+  const pre = tx.meta?.preTokenBalances || [];
+  const post = tx.meta?.postTokenBalances || [];
+  
+  const allAccountIndices = new Set([
+    ...pre.map((b: any) => b.accountIndex),
+    ...post.map((b: any) => b.accountIndex)
+  ]);
+
+  for (const index of allAccountIndices) {
+    const preBalance = pre.find((b: any) => b.accountIndex === index);
+    const postBalance = post.find((b: any) => b.accountIndex === index);
+    
+    const owner = postBalance?.owner || preBalance?.owner;
+    if (!owner) continue;
+
+    const preAmount = preBalance?.uiTokenAmount?.uiAmount || 0;
+    const postAmount = postBalance?.uiTokenAmount?.uiAmount || 0;
+    const netChange = postAmount - preAmount;
+
+    if (netChange !== 0) {
+      const currentChange = changes.get(owner) || 0;
+      changes.set(owner, currentChange + netChange);
+    }
+  }
+  return changes;
+}
+async function findSenderPda(changes: Map<string, number>, receiverVaultPda: string): Promise<string | null> {
+  const amountReceived = changes.get(receiverVaultPda) || 0;
+  if (amountReceived <= 0) return null;
+
+  for (const [owner, netChange] of changes.entries()) {
+    // Find an owner who is NOT the receiver and whose balance decreased by a matching amount.
+    if (owner !== receiverVaultPda && Math.abs(netChange + amountReceived) < 0.000001) {
+      return owner;
+    }
+  }
+  return null;
+}
+
+/**
+ * [CORRECTED] Finds the PDA that received tokens by using the pre-calculated changes map.
+ * @param changes - A map of balance changes from getBalanceChanges.
+ * @param senderVaultPda - The PDA of the user's vault that sent tokens.
+ * @returns The receiver's PDA string or null.
+ */
+async function findReceiverPda(changes: Map<string, number>, senderVaultPda: string): Promise<string | null> {
+  const amountSent = changes.get(senderVaultPda) || 0;
+  if (amountSent >= 0) return null;
+
+  for (const [owner, netChange] of changes.entries()) {
+    // Find an owner who is NOT the sender and whose balance increased by a matching amount.
+    if (owner !== senderVaultPda && Math.abs(netChange + amountSent) < 0.000001) {
+      return owner;
+    }
+  }
+  return null;
+}
+
 export const getWalletHistory = async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId, userType } = req.params; 
-
-    if (!userId || !userType) {
-      res.status(400).json({ error: 'User ID and user type are required' });
-      return;
-    }
-
-    // Get user details and PDA
     let user;
-    let userPda;
 
     if (userType === 'merchant') {
-      user = await prisma.merchant.findUnique({
-        where: { id: userId }
-      });
+      user = await prisma.merchant.findUnique({ where: { id: userId } });
     } else if (userType === 'customer') {
-      user = await prisma.customer.findUnique({
-        where: { id: userId }
-      });
+      user = await prisma.customer.findUnique({ where: { id: userId } });
     } else {
       res.status(400).json({ error: 'Invalid user type. Must be "merchant" or "customer"' });
       return;
     }
 
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
+    if (!user || !user.vaultuser) {
+      res.status(404).json({ error: 'User or user vault not found' });
       return;
     }
 
-   
-    const userPublicKey = new PublicKey(user.walletAddress);
-    const pda = new PublicKey(user.pda)
+    const vaultPdaString = user.vaultuser;
 
     try {
-  
-      const signatures = await connection.getSignaturesForAddress(pda, { limit: 50 });
-      
+      const usdcToInrRate = await getUsdcToInrRate(); // Assume getUsdcToInrRate is defined elsewhere
+      const signatures = await connection.getSignaturesForAddress(new PublicKey(vaultPdaString), { limit: 50 });
       const transactionHistory = [];
-
+       
       for (const sig of signatures) {
+        if (sig.err) continue;
         try {
-          const tx = await connection.getTransaction(sig.signature, {
-            maxSupportedTransactionVersion: 0
-          });
+          const tx = await connection.getTransaction(sig.signature, { maxSupportedTransactionVersion: 0 });
+          if (!tx || !tx.meta) continue;
+          
+          // Calculate all balance changes ONCE.
+          const changes = getBalanceChanges(tx);
+          const netChange = changes.get(vaultPdaString) || 0;
+          
+          const epsilon = 0.000001;
 
-          if (tx && tx.meta) {
-            const preBalances = tx.meta.preTokenBalances || [];
-            const postBalances = tx.meta.postTokenBalances || [];
+          if (netChange > epsilon) {
+            // Pass the 'changes' map to the efficient helper.
+            const senderPda = await findSenderPda(changes, vaultPdaString);
+            const senderName = senderPda ? await findUserByPda(senderPda) : null;
 
-            // Find transfers to our PDA
-            for (const postBalance of postBalances) {
-              if (postBalance.owner === pda.toBase58()) {
-                // This PDA received tokens in this transaction
-                const preBalance = preBalances.find((pb: any) => 
-                  pb.accountIndex === postBalance.accountIndex
-                );
+            transactionHistory.push({
+              type: 'received',
+              amount: netChange,
+              amountInr: netChange * usdcToInrRate,
+              currency: 'USDC',
+              sender: senderName || 'External Wallet',
+              timestamp: tx.blockTime,
+              signature: sig.signature,
+            });
 
-                if (preBalance) {
-                  const amountReceived = (postBalance.uiTokenAmount.uiAmount || 0) - (preBalance.uiTokenAmount.uiAmount || 0);
-                  
-                  if (amountReceived > 0) {
-                    // Find the sender's PDA
-                    const senderPda = await findSenderPda(tx, pda.toBase58());
-                    
-                    if (senderPda) {
-                      // Check if sender is in our database
-                      const senderInfo = await findUserByPda(senderPda);
-                      
-                      transactionHistory.push({
-                        type: 'received',
-                        amount: amountReceived,
-                        sender: senderInfo || 'External Wallet',
-                        timestamp: tx.blockTime,
-                        signature: sig.signature
-                      });
-                    }
-                  }
-                }
-              }
-            }
-
-            // Find transfers from our PDA
-            for (const preBalance of preBalances) {
-              if (preBalance.owner === pda.toBase58()) {
-                const postBalance = postBalances.find((pb: any) => 
-                  pb.accountIndex === preBalance.accountIndex
-                );
-
-                if (postBalance) {
-                  const amountSent = (preBalance.uiTokenAmount.uiAmount || 0) - (postBalance.uiTokenAmount.uiAmount || 0);
-                  
-                  if (amountSent > 0) {
-                    // Find the receiver's PDA
-                    const receiverPda = await findReceiverPda(tx, pda.toBase58());
-                    
-                    if (receiverPda) {
-                      // Check if receiver is in our database
-                      const receiverInfo = await findUserByPda(receiverPda);
-                      
-                      transactionHistory.push({
-                        type: 'sent',
-                        amount: amountSent,
-                        receiver: receiverInfo || 'External Wallet',
-                        timestamp: tx.blockTime,
-                        signature: sig.signature
-                      });
-                    }
-                  }
-                }
-              }
-            }
+          } else if (netChange < -epsilon) {
+            const amountSent = Math.abs(netChange);
+            // Pass the 'changes' map to the efficient helper.
+            const receiverPda = await findReceiverPda(changes, vaultPdaString);
+            const receiverName = receiverPda ? await findUserByPda(receiverPda) : null;
+            
+            transactionHistory.push({
+              type: 'sent',
+              amount: amountSent,
+              amountInr: amountSent * usdcToInrRate,
+              currency: 'USDC',
+              receiver: receiverName || 'External Wallet',
+              timestamp: tx.blockTime,
+              signature: sig.signature,
+            });
           }
         } catch (txError) {
           console.error('Error processing transaction:', sig.signature, txError);
-          // Continue with next transaction
         }
       }
+
+      transactionHistory.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
       res.status(200).json({
         user: {
           id: user.id,
           username: user.username,
           walletAddress: user.walletAddress,
-          pda: pda.toBase58()
+          vaultPda: vaultPdaString,
         },
-        transactionHistory
+        exchangeRate: { usdc_inr: usdcToInrRate },
+        transactionHistory,
       });
 
     } catch (solanaError) {
       console.error('Solana connection error:', solanaError);
       res.status(500).json({ error: 'Failed to fetch transaction history' });
     }
-
   } catch (error) {
     console.error('Wallet history error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-// Helper function to find sender's PDA from transaction
-async function findSenderPda(tx: any, receiverPda: string): Promise<string | null> {
-  try {
-    const preBalances = tx.meta.preTokenBalances || [];
-    const postBalances = tx.meta.postTokenBalances || [];
-
-    for (const postBalance of postBalances) {
-      if (postBalance.owner === receiverPda) {
-        const preBalance = preBalances.find((pb: any) => 
-          pb.accountIndex === postBalance.accountIndex
-        );
-
-        if (preBalance) {
-          const amountReceived = (postBalance.uiTokenAmount.uiAmount || 0) - (preBalance.uiTokenAmount.uiAmount || 0);
-          
-          if (amountReceived > 0) {
-            // Find the account that sent tokens
-            for (const preBal of preBalances) {
-              if (preBal.owner !== receiverPda) {
-                const postBal = postBalances.find((pb: any) => 
-                  pb.accountIndex === preBal.accountIndex
-                );
-
-                if (postBal) {
-                  const amountSent = (preBal.uiTokenAmount.uiAmount || 0) - (postBal.uiTokenAmount.uiAmount || 0);
-                  
-                  if (amountSent > 0 && Math.abs(amountSent - amountReceived) < 0.000001) {
-                    // This is likely the sender
-                    return preBal.owner;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error finding sender PDA:', error);
-  }
-  
-  return null;
-}
-
-// Helper function to find receiver's PDA from transaction
-async function findReceiverPda(tx: any, senderPda: string): Promise<string | null> {
-  try {
-    const preBalances = tx.meta.preTokenBalances || [];
-    const postBalances = tx.meta.postTokenBalances || [];
-
-    for (const preBalance of preBalances) {
-      if (preBalance.owner === senderPda) {
-        const postBalance = postBalances.find((pb: any) => 
-          pb.accountIndex === preBalance.accountIndex
-        );
-
-        if (postBalance) {
-          const amountSent = (preBalance.uiTokenAmount.uiAmount || 0) - (postBalance.uiTokenAmount.uiAmount || 0);
-          
-          if (amountSent > 0) {
-            // Find the account that received tokens
-            for (const postBal of postBalances) {
-              if (postBal.owner !== senderPda) {
-                const preBal = preBalances.find((pb: any) => 
-                  pb.accountIndex === postBal.accountIndex
-                );
-
-                if (preBal) {
-                  const amountReceived = (postBal.uiTokenAmount.uiAmount || 0) - (preBal.uiTokenAmount.uiAmount || 0);
-                  
-                  if (amountReceived > 0 && Math.abs(amountReceived - amountSent) < 0.000001) {
-                    // This is likely the receiver
-                    return postBal.owner;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error finding receiver PDA:', error);
-  }
-  
-  return null;
-}
-
-// Helper function to find user by PDA
+// This helper function does not need changes.
 async function findUserByPda(pda: string): Promise<string | null> {
   try {
-    // Check merchants
-    const merchant = await prisma.merchant.findFirst({
-      where: { pda: pda },
-      select: { username: true }
-    });
-
-    if (merchant) {
-      return merchant.username;
-    }
-
-    // Check customers
-    const customer = await prisma.customer.findFirst({
-      where: { pda: pda },
-      select: { username: true }
-    });
-
-    if (customer) {
-      return customer.username;
-    }
+    const merchant = await prisma.merchant.findFirst({ where: { pda }, select: { username: true } });
+    if (merchant) return merchant.username;
+    
+    const customer = await prisma.customer.findFirst({ where: { pda }, select: { username: true } });
+    if (customer) return customer.username;
 
     return null;
   } catch (error) {
@@ -514,5 +441,56 @@ export const purchaseProduct = async (req: CustomerAuthenticatedRequest, res: Re
   } catch (error) {
     console.error('Purchase error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+}; 
+
+export const generateQRCode = async (req: Request, res: Response) => {
+  try {
+    const { merchantId } = req.params;
+    const { items, totalAmount } = req.body;
+
+    // Validate merchant exists
+    const merchant = await prisma.merchant.findUnique({
+      where: { id: merchantId }
+    });
+
+    if (!merchant) {
+      res.status(404).json({ error: 'Merchant not found' });
+      return;
+    }
+
+    // Create the data structure for QR code
+    const qrData = {
+      merchantId,
+      items: items.map((sp: any) => ({
+        productId: sp.productId,
+        name: sp.name,
+        price: sp.price,
+        quantity: sp.quantity,
+        total: sp.total
+      })),
+      totalAmount,
+      timestamp: new Date().toISOString()
+    };
+
+    // Generate QR code as data URL
+    const qrCodeDataUrl = await QRCode.toDataURL(JSON.stringify(qrData), {
+      errorCorrectionLevel: 'M',
+      type: 'image/png',
+      margin: 1,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      }
+    });
+
+    res.json({
+      qrCode: qrCodeDataUrl,
+      data: qrData
+    });
+
+  } catch (error) {
+    console.error('QR Code generation error:', error);
+    res.status(500).json({ error: 'Failed to generate QR code' });
   }
 }; 

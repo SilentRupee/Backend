@@ -97,7 +97,8 @@ export const customerLogin = async (req: Request, res: Response): Promise<void> 
     const token = generateCustomerToken({
       customerId: customer.id,
       email: customer.email,
-      username: customer.username
+      username: customer.username,
+      role:"Customer"
     });
     
     const response: CustomerAuthResponse = {
@@ -127,12 +128,20 @@ export const customerVerify = async (req: Request, res: Response): Promise<void>
     req.app.locals.resetSession = true;
     
     const keypair = Keypair.generate();
-    const algorithm = 'aes-256-cbc';
-    const key = crypto.scryptSync(process.env.CRYPTO_SECRET || 'your-secret', 'salt', 32);
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(algorithm, key, iv);
-    let encrypted = cipher.update(keypair.secretKey.toString(), 'utf8', 'hex');
-    encrypted += cipher.final('hex');
+const algorithm = 'aes-256-cbc';
+const key = crypto.scryptSync('your-secret', 'salt', 32);
+const iv = crypto.randomBytes(16);
+
+const cipher = crypto.createCipheriv(algorithm, key, iv);
+
+// Encrypt the raw 64-byte secret key, NOT the base58 string.
+const encryptedBuffer = Buffer.concat([
+    cipher.update(keypair.secretKey),
+    cipher.final(),
+]);
+
+const encryptedPrivateKey = encryptedBuffer.toString('hex');
+
     
     try {
       const [userVaultPda, userVaultBump] = anchor.web3.PublicKey.findProgramAddressSync(
@@ -154,7 +163,7 @@ export const customerVerify = async (req: Request, res: Response): Promise<void>
           deviceId: `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           walletAddress: keypair.publicKey.toBase58(),
           iv: iv.toString('hex'),
-          Privatekey: encrypted
+          Privatekey: encryptedPrivateKey
         }
       });
     
@@ -181,7 +190,8 @@ export const customerVerify = async (req: Request, res: Response): Promise<void>
       const token = generateCustomerToken({
         customerId: customer.id,
         email: customer.email,
-        username: customer.username
+        username: customer.username,
+        role:"Customer"
       });
       
       const response: CustomerAuthResponse = {

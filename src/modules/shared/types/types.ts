@@ -32,10 +32,12 @@ export interface JWTPayload {
   email: string;
   username: string;
   type: string;
+  role:String
 }
 
 export interface CustomerJWTPayload {
   customerId: string;
   email: string;
   username: string;
+  role:String
 } 
