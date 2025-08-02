@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getProductCount, createProduct, getProductsByMerchant, getProductById, updateProduct, deleteProduct, purchaseProduct, getWalletHistory, generateQRCode } from '../controllers/productController';
+import { getProductCount, createProduct, getProductsByMerchant, getProductById, updateProduct, deleteProduct, purchaseProduct, getWalletHistory, generateQRCode, transferToCustomer } from '../controllers/productController';
 import { validateRequest } from '../../shared/validation/validationMiddleware';
 import { productSchema, purchaseSchema } from '../../shared/validation/validation';
 import { authenticateCustomerToken } from '../../shared/middleware/authMiddleware';
@@ -12,6 +12,9 @@ router.put('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
 
 router.post('/purchase', authenticateCustomerToken, purchaseProduct);
+
+// Customer-to-customer transfer route
+router.post('/transfer', authenticateCustomerToken, transferToCustomer);
 
 // QR Code generation route
 router.post('/merchants/:merchantId/qr-code', generateQRCode);

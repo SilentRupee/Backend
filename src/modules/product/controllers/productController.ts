@@ -92,7 +92,6 @@ export const getProductById = async (req: Request, res: Response) => {
   }
 };
 
-// UPDATE Product
 export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -103,8 +102,6 @@ export const updateProduct = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to update product' });
   }
 };
-
-// DELETE Product
 export const deleteProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -212,7 +209,7 @@ export const getWalletHistory = async (req: Request, res: Response): Promise<voi
     const vaultPdaString = user.vaultuser;
 
     try {
-      const usdcToInrRate = await getUsdcToInrRate(); // Assume getUsdcToInrRate is defined elsewhere
+      const usdcToInrRate = await getUsdcToInrRate();
       const signatures = await connection.getSignaturesForAddress(new PublicKey(vaultPdaString), { limit: 50 });
       const transactionHistory = [];
        
@@ -221,15 +218,13 @@ export const getWalletHistory = async (req: Request, res: Response): Promise<voi
         try {
           const tx = await connection.getTransaction(sig.signature, { maxSupportedTransactionVersion: 0 });
           if (!tx || !tx.meta) continue;
-          
-          // Calculate all balance changes ONCE.
+        
           const changes = getBalanceChanges(tx);
           const netChange = changes.get(vaultPdaString) || 0;
           
           const epsilon = 0.000001;
 
           if (netChange > epsilon) {
-            // Pass the 'changes' map to the efficient helper.
             const senderPda = await findSenderPda(changes, vaultPdaString);
             const senderName = senderPda ? await findUserByPda(senderPda) : null;
 
@@ -245,7 +240,6 @@ export const getWalletHistory = async (req: Request, res: Response): Promise<voi
 
           } else if (netChange < -epsilon) {
             const amountSent = Math.abs(netChange);
-            // Pass the 'changes' map to the efficient helper.
             const receiverPda = await findReceiverPda(changes, vaultPdaString);
             const receiverName = receiverPda ? await findUserByPda(receiverPda) : null;
             
@@ -318,16 +312,12 @@ export const purchaseProduct = async (req: CustomerAuthenticatedRequest, res: Re
       res.status(400).json({ error: 'Product array is required' });
       return;
     }
-
-    // Validate each product in the array
     for (const product of Product) {
       if (!product.productId || !product.quantity || product.quantity <= 0) {
         res.status(400).json({ error: 'Each product must have valid productId and quantity' });
         return;
       }
     }
-
-    // Extract all product IDs
     const productIds = Product.map(p => p.productId);
     
     const products = await prisma.product.findMany({
@@ -343,8 +333,6 @@ export const purchaseProduct = async (req: CustomerAuthenticatedRequest, res: Re
       res.status(404).json({ error: 'One or more products not found' });
       return;
     }
-
-    // Check stock for each product with its specific quantity
     for (const productRequest of Product) {
       const product = products.find(p => p.id === productRequest.productId);
       if (!product) {
@@ -365,8 +353,6 @@ export const purchaseProduct = async (req: CustomerAuthenticatedRequest, res: Re
       res.status(404).json({ error: 'Customer not found' });
       return;
     }
-
-    // Calculate total amount for all products with their specific quantities
     const totalAmountInr = Product.reduce((total, productRequest) => {
       const product = products.find(p => p.id === productRequest.productId);
       return total + (product!.price * productRequest.quantity);
@@ -524,5 +510,142 @@ export const generateQRCode = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('QR Code generation error:', error);
     res.status(500).json({ error: 'Failed to generate QR code' });
+  }
+};
+
+export const transferToCustomer = async (req: CustomerAuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const senderCustomerId = req.customer?.customerId;
+    const { receiverEmail, amount } = req.body;
+
+    if (!senderCustomerId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    if (!receiverEmail || !amount || amount <= 0) {
+      res.status(400).json({ error: 'Valid receiver email and amount are required' });
+      return;
+    }
+
+    // Get sender customer
+    const senderCustomer = await prisma.customer.findUnique({
+      where: { id: senderCustomerId }
+    });
+
+    if (!senderCustomer) {
+      res.status(404).json({ error: 'Sender customer not found' });
+      return;
+    }
+
+    // Prevent self-transfer
+    if (senderCustomer.email === receiverEmail) {
+      res.status(400).json({ error: 'Cannot transfer to yourself' });
+      return;
+    }
+
+    // Get receiver customer by email
+    const receiverCustomer = await prisma.customer.findUnique({
+      where: { email: receiverEmail }
+    });
+
+    if (!receiverCustomer) {
+      res.status(404).json({ error: 'Receiver customer not found' });
+      return;
+    }
+
+    const usdToInrRate = 83.5;
+    const amountInUsd = amount / usdToInrRate;
+    const amountInUsdcLamports = new anchor.BN(amountInUsd * 1000000);
+
+    try {
+      const algorithm = 'aes-256-cbc';
+      const key = crypto.scryptSync('your-secret', 'salt', 32);
+
+      // Decrypt sender's private key
+      const senderIv = Buffer.from(senderCustomer.iv, 'hex');
+      const senderCipher = crypto.createDecipheriv(algorithm, key, senderIv);
+      const senderDecryptedBuffer = Buffer.concat([
+        senderCipher.update(senderCustomer.Privatekey, 'hex'),
+        senderCipher.final(),
+      ]);
+      const senderKeypair = Keypair.fromSecretKey(senderDecryptedBuffer);
+
+      // Decrypt receiver's private key
+      const receiverIv = Buffer.from(receiverCustomer.iv, 'hex');
+      const receiverCipher = crypto.createDecipheriv(algorithm, key, receiverIv);
+      const receiverDecryptedBuffer = Buffer.concat([
+        receiverCipher.update(receiverCustomer.Privatekey, 'hex'),
+        receiverCipher.final(),
+      ]);
+      const receiverKeypair = Keypair.fromSecretKey(receiverDecryptedBuffer);
+
+      const mint = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
+      const senderAta = await getAssociatedTokenAddress(mint, senderKeypair.publicKey, false);
+      const receiverAta = await getAssociatedTokenAddress(mint, receiverKeypair.publicKey, false);
+
+      const tx = await program.methods
+        .tranfer(new anchor.BN(amountInUsdcLamports))
+        .accountsStrict({
+          user: senderKeypair.publicKey,
+          taker: receiverKeypair.publicKey,
+          mint: mint,
+          userAta: senderAta,
+          vaultUser: anchor.web3.PublicKey.findProgramAddressSync(
+            [Buffer.from("user"), senderKeypair.publicKey.toBuffer()],
+            program.programId
+          )[0],
+          vaultAta: await getAssociatedTokenAddress(mint, await anchor.web3.PublicKey.findProgramAddressSync(
+            [Buffer.from("user"), senderKeypair.publicKey.toBuffer()],
+            program.programId
+          )[0], true),
+          vaultSecond: await anchor.web3.PublicKey.findProgramAddressSync(
+            [Buffer.from("user"), receiverKeypair.publicKey.toBuffer()],
+            program.programId
+          )[0],
+          vaultSecondAta: await getAssociatedTokenAddress(mint, await anchor.web3.PublicKey.findProgramAddressSync(
+            [Buffer.from("user"), receiverKeypair.publicKey.toBuffer()],
+            program.programId
+          )[0], true),
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+          associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+        })
+        .signers([senderKeypair])
+        .rpc();
+
+      console.log('Customer transfer transaction:', tx);
+
+      res.status(200).json({
+        message: 'Transfer successful',
+        transactionHash: tx,
+        transfer: {
+          sender: {
+            id: senderCustomer.id,
+            username: senderCustomer.username,
+            email: senderCustomer.email
+          },
+          receiver: {
+            id: receiverCustomer.id,
+            username: receiverCustomer.username,
+            email: receiverCustomer.email
+          },
+          amount: amount,
+          amountInUsdc: amountInUsd,
+          amountInLamports: amountInUsdcLamports.toString()
+        }
+      });
+
+    } catch (contractError) {
+      console.error('Contract error:', contractError);
+      res.status(500).json({
+        error: 'Transfer failed',
+        details: contractError
+      });
+    }
+
+  } catch (error) {
+    console.error('Transfer error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 }; 
