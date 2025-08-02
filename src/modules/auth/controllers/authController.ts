@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import e, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword, verifyPassword } from '../../shared/services/passwordService';
 import { generateToken, generateCustomerToken } from '../../shared/services/jwtService';
@@ -243,10 +243,30 @@ export const Profile=async(req:Request,res:Response)=>{
       return res.status(400).json({message:e});
   }
 }
+export  const getmerchantname=async(req:AuthenticatedRequest,res:Response)=>{
+  const merchantId = req.params.merchantId;
+  if(!merchantId){
+    res.status(401).json({ error: 'Merchant ID is required' });
+    return;
+  }
 
+  const merchant = await prisma.merchant.findUnique({
+    where: { id: merchantId },
+    select: {
+      name: true
+    }
+  });
+  if (!merchant) {
+    res.status(404).json({ error: 'Merchant not found' });
+    return;
+  }
+  res.json({ merchant });
+
+}
 export const getProfile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const merchantId = req.merchant?.merchantId;
+    
+    const merchantId = req.merchant?.merchantId
 
     if (!merchantId) {
       res.status(401).json({ error: 'Unauthorized' });

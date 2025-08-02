@@ -287,7 +287,6 @@ export const getWalletHistory = async (req: Request, res: Response): Promise<voi
   }
 };
 
-// This helper function does not need changes.
 async function findUserByPda(pda: string): Promise<string | null> {
   try {
     const merchant = await prisma.merchant.findFirst({ where: { pda }, select: { username: true } });
@@ -307,36 +306,56 @@ export const purchaseProduct = async (req: CustomerAuthenticatedRequest, res: Re
   try {
     console.log("chec");
     const customerId = req.customer?.customerId;
-    const { productId, quantity } = req.body;
+
+    const {Product} = req.body;
     console.log("chec",customerId);
 
     if (!customerId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
-    if (!quantity || quantity <= 0) {
-      res.status(400).json({ error: 'Invalid quantity' });
+    if (!Product || !Array.isArray(Product) || Product.length === 0) {
+      res.status(400).json({ error: 'Product array is required' });
       return;
     }
 
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
+    // Validate each product in the array
+    for (const product of Product) {
+      if (!product.productId || !product.quantity || product.quantity <= 0) {
+        res.status(400).json({ error: 'Each product must have valid productId and quantity' });
+        return;
+      }
+    }
+
+    // Extract all product IDs
+    const productIds = Product.map(p => p.productId);
+    
+    const products = await prisma.product.findMany({
+      where: { 
+        id: { in: productIds }
+      },
       include: {
         merchant: true
       }
     });
 
-    if (!product) {
-      res.status(404).json({ error: 'Product not found' });
+    if (products.length !== productIds.length) {
+      res.status(404).json({ error: 'One or more products not found' });
       return;
     }
 
-
-    if (product.stock < quantity) {
-      res.status(400).json({ error: 'Insufficient stock' });
-      return;
+    // Check stock for each product with its specific quantity
+    for (const productRequest of Product) {
+      const product = products.find(p => p.id === productRequest.productId);
+      if (!product) {
+        res.status(404).json({ error: `Product not found: ${productRequest.productId}` });
+        return;
+      }
+      if (product.stock < productRequest.quantity) {
+        res.status(400).json({ error: `Insufficient stock for product: ${product.name}` });
+        return;
+      }
     }
-
 
     const customer = await prisma.customer.findUnique({
       where: { id: customerId }
@@ -347,27 +366,29 @@ export const purchaseProduct = async (req: CustomerAuthenticatedRequest, res: Re
       return;
     }
 
-    const totalAmountInr = product.price * quantity;
+    // Calculate total amount for all products with their specific quantities
+    const totalAmountInr = Product.reduce((total, productRequest) => {
+      const product = products.find(p => p.id === productRequest.productId);
+      return total + (product!.price * productRequest.quantity);
+    }, 0);
+    
     const usdToInrRate = 83.5; 
-
-   
     const totalAmountInUsd = totalAmountInr / usdToInrRate;
-
-
     const totalAmountInUsdcLamports = new anchor.BN(totalAmountInUsd * 1000000);
+
     try {
       const algorithm = 'aes-256-cbc';
       const key = crypto.scryptSync('your-secret', 'salt', 32);
 
       const customerIv = Buffer.from(customer.iv, 'hex');
       const customerCipher = crypto.createDecipheriv(algorithm, key, customerIv);
-    const decryptedBuffer = Buffer.concat([
-        customerCipher.update(customer.Privatekey, 'hex'), 
-        customerCipher.final(),
-    ])
+      const decryptedBuffer = Buffer.concat([
+          customerCipher.update(customer.Privatekey, 'hex'), 
+          customerCipher.final(),
+      ])
       const customerKeypair = Keypair.fromSecretKey(decryptedBuffer);
       const merchant = await prisma.merchant.findUnique({
-        where: { id: product.merchantId }
+        where: { id: products[0].merchantId }
       });
       
       if (!merchant) {
@@ -380,9 +401,11 @@ export const purchaseProduct = async (req: CustomerAuthenticatedRequest, res: Re
       let merchantDecrypted = merchantCipher.update(merchant.Privatekey, 'hex', 'utf8');
       merchantDecrypted += merchantCipher.final('utf8');
       const merchantKeypair = Keypair.fromSecretKey(bs58.decode(merchantDecrypted));
+      
       const mint = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
       const customerAta = await getAssociatedTokenAddress(mint, customerKeypair.publicKey, false);
       const merchantAta = await getAssociatedTokenAddress(mint, merchantKeypair.publicKey, false)
+      
       const tx = await program.methods
         .tranfer(new anchor.BN(totalAmountInUsdcLamports)) 
         .accountsStrict({
@@ -414,21 +437,31 @@ export const purchaseProduct = async (req: CustomerAuthenticatedRequest, res: Re
         .rpc();
 
       console.log('Transfer transaction:', tx);
-      await prisma.product.update({
-        where: { id: productId },
-        data: {
-          stock: product.stock - quantity
-        }
-      });
+      
+      // Update stock for all products with their specific quantities
+      await Promise.all(Product.map(productRequest => {
+        const product = products.find(p => p.id === productRequest.productId);
+        return prisma.product.update({
+          where: { id: product!.id },
+          data: {
+            stock: product!.stock - productRequest.quantity
+          }
+        });
+      }));
+
       res.status(200).json({
         message: 'Purchase successful',
         transactionHash: tx,
-        product: {
-          id: product.id,
-          name: product.name,
-          quantity: quantity,
-          totalAmount: totalAmountInUsdcLamports
-        }
+        products: Product.map(productRequest => {
+          const product = products.find(p => p.id === productRequest.productId);
+          return {
+            id: product!.id,
+            name: product!.name,
+            quantity: productRequest.quantity,
+            price: product!.price
+          };
+        }),
+        totalAmount: totalAmountInUsdcLamports
       });
     } catch (contractError) {
       console.error('Contract error:', contractError);
@@ -449,7 +482,6 @@ export const generateQRCode = async (req: Request, res: Response) => {
     const { merchantId } = req.params;
     const { items, totalAmount } = req.body;
 
-    // Validate merchant exists
     const merchant = await prisma.merchant.findUnique({
       where: { id: merchantId }
     });

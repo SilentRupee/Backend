@@ -11,7 +11,7 @@ router.get('/merchants/:merchantId/products', getProductsByMerchant);
 router.put('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
 
-router.post('/purchase', authenticateCustomerToken, validateRequest(purchaseSchema), purchaseProduct);
+router.post('/purchase', authenticateCustomerToken, purchaseProduct);
 
 // QR Code generation route
 router.post('/merchants/:merchantId/qr-code', generateQRCode);

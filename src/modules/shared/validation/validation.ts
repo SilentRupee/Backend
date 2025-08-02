@@ -79,7 +79,7 @@ export const customerProfileSchema = z.object({
 });
 
 export const purchaseSchema = z.object({
-  productId: z.string().min(1, 'Product ID is required'),
+  productId: z.array(z.string()).min(1, 'Product ID is required'),
   quantity: z.number().positive('Quantity must be positive')
 });
 
