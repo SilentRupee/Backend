@@ -19,9 +19,9 @@ model Merchant {
   Privatekey       String      @unique
   businessName        String
     iv                  String
-       pda               String 
+       pda               String     @unique
   shopAddress         String
-  vaultuser            String
+  vaultuser            String         @unique
   phoneNumber         String
   gstin               String?
   isActive            Boolean     @default(true)
@@ -40,8 +40,8 @@ model Customer {
      iv                  String
    Privatekey       String      @unique
     pin                 Int 
-    pda               String 
-      vaultuser            String
+    pda               String     @unique
+      vaultuser            String    @unique
   deviceId      String    @unique 
   walletAddress String    @unique 
   createdAt     DateTime  @default(now())

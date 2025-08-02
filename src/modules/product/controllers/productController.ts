@@ -136,6 +136,7 @@ function getBalanceChanges(tx: any): Map<string, number> {
     ...pre.map((b: any) => b.accountIndex),
     ...post.map((b: any) => b.accountIndex)
   ]);
+  console.log(allAccountIndices);
 
   for (const index of allAccountIndices) {
     const preBalance = pre.find((b: any) => b.accountIndex === index);
@@ -147,12 +148,14 @@ function getBalanceChanges(tx: any): Map<string, number> {
     const preAmount = preBalance?.uiTokenAmount?.uiAmount || 0;
     const postAmount = postBalance?.uiTokenAmount?.uiAmount || 0;
     const netChange = postAmount - preAmount;
-
+      
     if (netChange !== 0) {
       const currentChange = changes.get(owner) || 0;
       changes.set(owner, currentChange + netChange);
+   
     }
   }
+  console.log(changes);
   return changes;
 }
 async function findSenderPda(changes: Map<string, number>, receiverVaultPda: string): Promise<string | null> {
@@ -167,19 +170,12 @@ async function findSenderPda(changes: Map<string, number>, receiverVaultPda: str
   }
   return null;
 }
-
-/**
- * [CORRECTED] Finds the PDA that received tokens by using the pre-calculated changes map.
- * @param changes - A map of balance changes from getBalanceChanges.
- * @param senderVaultPda - The PDA of the user's vault that sent tokens.
- * @returns The receiver's PDA string or null.
- */
 async function findReceiverPda(changes: Map<string, number>, senderVaultPda: string): Promise<string | null> {
   const amountSent = changes.get(senderVaultPda) || 0;
   if (amountSent >= 0) return null;
 
   for (const [owner, netChange] of changes.entries()) {
-    // Find an owner who is NOT the sender and whose balance increased by a matching amount.
+  
     if (owner !== senderVaultPda && Math.abs(netChange + amountSent) < 0.000001) {
       return owner;
     }
@@ -187,77 +183,91 @@ async function findReceiverPda(changes: Map<string, number>, senderVaultPda: str
   return null;
 }
 
+
+
+
 export const getWalletHistory = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userId, userType } = req.params; 
-    let user;
+    const { userId, userType } = req.params;
 
+    let user;
     if (userType === 'merchant') {
       user = await prisma.merchant.findUnique({ where: { id: userId } });
     } else if (userType === 'customer') {
       user = await prisma.customer.findUnique({ where: { id: userId } });
     } else {
-      res.status(400).json({ error: 'Invalid user type. Must be "merchant" or "customer"' });
+      res.status(400).json({ error: 'Invalid user type. Must be "merchant" or "customer".' });
       return;
     }
 
-    if (!user || !user.vaultuser) {
-      res.status(404).json({ error: 'User or user vault not found' });
+    // Validate that both the PDA and the vault address exist
+    if (!user || !user.pda || !user.vaultuser) {
+      res.status(404).json({ error: 'User, PDA, or user vault not found.' });
       return;
     }
 
-    const vaultPdaString = user.vaultuser;
+    const userPdaAddress = user.pda;
+    const userVaultAddress = user.vaultuser; // The token account owned by the PDA
 
     try {
       const usdcToInrRate = await getUsdcToInrRate();
-      const signatures = await connection.getSignaturesForAddress(new PublicKey(vaultPdaString), { limit: 50 });
+      // Fetch transaction signatures for the PDA
+      const signatures = await connection.getSignaturesForAddress(new PublicKey(userPdaAddress), { limit: 50 });
       const transactionHistory = [];
-       
+
       for (const sig of signatures) {
         if (sig.err) continue;
+
         try {
           const tx = await connection.getTransaction(sig.signature, { maxSupportedTransactionVersion: 0 });
           if (!tx || !tx.meta) continue;
-        
+
+          // This function gets token balance changes for all accounts in the transaction
           const changes = getBalanceChanges(tx);
-          const netChange = changes.get(vaultPdaString) || 0;
           
-          const epsilon = 0.000001;
+          // Find the net change for the user's TOKEN ACCOUNT (vaultuser)
+          const netChange = changes.get(userVaultAddress) || 0;
 
-          if (netChange > epsilon) {
-            const senderPda = await findSenderPda(changes, vaultPdaString);
-            const senderName = senderPda ? await findUserByPda(senderPda) : null;
-
-            transactionHistory.push({
-              type: 'received',
-              amount: netChange,
-              amountInr: netChange * usdcToInrRate,
-              currency: 'USDC',
-              sender: senderName || 'External Wallet',
-              timestamp: tx.blockTime,
-              signature: sig.signature,
-            });
-
-          } else if (netChange < -epsilon) {
-            const amountSent = Math.abs(netChange);
-            const receiverPda = await findReceiverPda(changes, vaultPdaString);
-            const receiverName = receiverPda ? await findUserByPda(receiverPda) : null;
-            
-            transactionHistory.push({
-              type: 'sent',
-              amount: amountSent,
-              amountInr: amountSent * usdcToInrRate,
-              currency: 'USDC',
-              receiver: receiverName || 'External Wallet',
-              timestamp: tx.blockTime,
-              signature: sig.signature,
-            });
+          // Skip transactions that didn't affect the user's token balance
+          if (Math.abs(netChange) < 0.000001) {
+            continue;
           }
+          
+          const type = netChange > 0 ? "Receiver" : "Sender";
+          const amount = Math.abs(netChange);
+
+          // Find the counterparty's address and name
+          let counterpartyName = "External Wallet";
+          // The counterparty is the other token account in the transaction
+          const counterpartyAddress = Array.from(changes.keys()).find(k => k !== userVaultAddress);
+
+          if (counterpartyAddress) {
+            const merchant = await prisma.merchant.findUnique({ where: { vaultuser: counterpartyAddress } });
+            if (merchant) {
+              counterpartyName = merchant.username;
+            } else {
+              const customer = await prisma.customer.findUnique({ where: { vaultuser: counterpartyAddress } });
+              if (customer) {
+                counterpartyName = customer.username;
+              }
+            }
+          }
+          
+          transactionHistory.push({
+            type,
+            amount: amount,
+            amountInr: amount * usdcToInrRate,
+            currency: 'USDC',
+            counterparty: counterpartyName,
+            timestamp: tx.blockTime,
+            signature: sig.signature,
+          });
+
         } catch (txError) {
-          console.error('Error processing transaction:', sig.signature, txError);
+          console.error(`Error processing transaction: ${sig.signature}`, txError);
         }
       }
-
+      
       transactionHistory.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
       res.status(200).json({
@@ -265,7 +275,7 @@ export const getWalletHistory = async (req: Request, res: Response): Promise<voi
           id: user.id,
           username: user.username,
           walletAddress: user.walletAddress,
-          vaultPda: vaultPdaString,
+          pda: userPdaAddress, // Report the PDA as the main account address
         },
         exchangeRate: { usdc_inr: usdcToInrRate },
         transactionHistory,
@@ -273,11 +283,11 @@ export const getWalletHistory = async (req: Request, res: Response): Promise<voi
 
     } catch (solanaError) {
       console.error('Solana connection error:', solanaError);
-      res.status(500).json({ error: 'Failed to fetch transaction history' });
+      res.status(500).json({ error: 'Failed to fetch transaction history from the blockchain.' });
     }
   } catch (error) {
     console.error('Wallet history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error.' });
   }
 };
 
@@ -423,8 +433,7 @@ export const purchaseProduct = async (req: CustomerAuthenticatedRequest, res: Re
         .rpc();
 
       console.log('Transfer transaction:', tx);
-      
-      // Update stock for all products with their specific quantities
+    
       await Promise.all(Product.map(productRequest => {
         const product = products.find(p => p.id === productRequest.productId);
         return prisma.product.update({
@@ -527,8 +536,6 @@ export const transferToCustomer = async (req: CustomerAuthenticatedRequest, res:
       res.status(400).json({ error: 'Valid receiver email and amount are required' });
       return;
     }
-
-    // Get sender customer
     const senderCustomer = await prisma.customer.findUnique({
       where: { id: senderCustomerId }
     });
@@ -537,8 +544,6 @@ export const transferToCustomer = async (req: CustomerAuthenticatedRequest, res:
       res.status(404).json({ error: 'Sender customer not found' });
       return;
     }
-
-    // Prevent self-transfer
     if (senderCustomer.email === receiverEmail) {
       res.status(400).json({ error: 'Cannot transfer to yourself' });
       return;
@@ -548,21 +553,16 @@ export const transferToCustomer = async (req: CustomerAuthenticatedRequest, res:
     const receiverCustomer = await prisma.customer.findUnique({
       where: { email: receiverEmail }
     });
-
     if (!receiverCustomer) {
       res.status(404).json({ error: 'Receiver customer not found' });
       return;
     }
-
     const usdToInrRate = 83.5;
     const amountInUsd = amount / usdToInrRate;
     const amountInUsdcLamports = new anchor.BN(amountInUsd * 1000000);
-
     try {
       const algorithm = 'aes-256-cbc';
       const key = crypto.scryptSync('your-secret', 'salt', 32);
-
-      // Decrypt sender's private key
       const senderIv = Buffer.from(senderCustomer.iv, 'hex');
       const senderCipher = crypto.createDecipheriv(algorithm, key, senderIv);
       const senderDecryptedBuffer = Buffer.concat([
@@ -570,43 +570,20 @@ export const transferToCustomer = async (req: CustomerAuthenticatedRequest, res:
         senderCipher.final(),
       ]);
       const senderKeypair = Keypair.fromSecretKey(senderDecryptedBuffer);
-
-      // Decrypt receiver's private key
-      const receiverIv = Buffer.from(receiverCustomer.iv, 'hex');
-      const receiverCipher = crypto.createDecipheriv(algorithm, key, receiverIv);
-      const receiverDecryptedBuffer = Buffer.concat([
-        receiverCipher.update(receiverCustomer.Privatekey, 'hex'),
-        receiverCipher.final(),
-      ]);
-      const receiverKeypair = Keypair.fromSecretKey(receiverDecryptedBuffer);
-
+  
       const mint = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
       const senderAta = await getAssociatedTokenAddress(mint, senderKeypair.publicKey, false);
-      const receiverAta = await getAssociatedTokenAddress(mint, receiverKeypair.publicKey, false);
-
       const tx = await program.methods
         .tranfer(new anchor.BN(amountInUsdcLamports))
         .accountsStrict({
           user: senderKeypair.publicKey,
-          taker: receiverKeypair.publicKey,
+          taker: receiverCustomer.walletAddress,
           mint: mint,
           userAta: senderAta,
-          vaultUser: anchor.web3.PublicKey.findProgramAddressSync(
-            [Buffer.from("user"), senderKeypair.publicKey.toBuffer()],
-            program.programId
-          )[0],
-          vaultAta: await getAssociatedTokenAddress(mint, await anchor.web3.PublicKey.findProgramAddressSync(
-            [Buffer.from("user"), senderKeypair.publicKey.toBuffer()],
-            program.programId
-          )[0], true),
-          vaultSecond: await anchor.web3.PublicKey.findProgramAddressSync(
-            [Buffer.from("user"), receiverKeypair.publicKey.toBuffer()],
-            program.programId
-          )[0],
-          vaultSecondAta: await getAssociatedTokenAddress(mint, await anchor.web3.PublicKey.findProgramAddressSync(
-            [Buffer.from("user"), receiverKeypair.publicKey.toBuffer()],
-            program.programId
-          )[0], true),
+          vaultUser:senderCustomer.vaultuser,
+          vaultAta:senderCustomer.pda,
+          vaultSecond:receiverCustomer.vaultuser,
+          vaultSecondAta:receiverCustomer.pda,
           systemProgram: anchor.web3.SystemProgram.programId,
           tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
           associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,

@@ -16,10 +16,7 @@ router.post('/purchase', authenticateCustomerToken, purchaseProduct);
 // Customer-to-customer transfer route
 router.post('/transfer', authenticateCustomerToken, transferToCustomer);
 
-// QR Code generation route
 router.post('/merchants/:merchantId/qr-code', generateQRCode);
-
-// Wallet history route - get transaction history for user
 router.get('/wallet/:userType/:userId', getWalletHistory);
 
 export const productRoute=router;
